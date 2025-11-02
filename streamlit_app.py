@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import chardet
 import io
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -13,9 +12,9 @@ import random
 # -----------------------------
 # 기본 설정
 # -----------------------------
-st.title("📘 영어 단어 시험지 생성기 (한글 지원)")
-st.write("CSV 또는 XLSX 파일을 업로드하면 자동으로 시험지를 만들어줍니다.")
-st.write("➡️ 절반은 영어 비우기, 절반은 뜻 비우기 형태로 구성됩니다.")
+st.title("📘 영어 단어 시험지 생성기 (iPad 한글 지원)")
+st.write("Numbers나 Excel로 만든 파일을 CSV 또는 XLSX로 저장 후 업로드하세요.")
+st.write("➡️ 절반은 영어 비우기, 절반은 뜻 비우기 형태로 자동 구성됩니다.")
 
 uploaded_files = st.file_uploader(
     "단어 스프레드시트 파일을 업로드하세요 (여러 개 선택 가능)",
@@ -24,15 +23,19 @@ uploaded_files = st.file_uploader(
 )
 
 # -----------------------------
-# 파일 읽기 (자동 인코딩 감지)
+# 파일 읽기 (chardet 없이 처리)
 # -----------------------------
 def load_file(uploaded_file):
     name = uploaded_file.name.lower()
     if name.endswith(".csv"):
+        # Bytes를 읽고 인코딩 자동 추정
         raw = uploaded_file.read()
-        detected = chardet.detect(raw)
-        encoding = detected["encoding"] or "utf-8-sig"
-        return pd.read_csv(io.BytesIO(raw), encoding=encoding)
+        # utf-8 실패 시 cp949 (한글 윈도우용)로 재시도
+        try:
+            df = pd.read_csv(io.BytesIO(raw), encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            df = pd.read_csv(io.BytesIO(raw), encoding="cp949")
+        return df
     elif name.endswith(".xlsx"):
         return pd.read_excel(uploaded_file)
     else:
@@ -46,7 +49,7 @@ def make_pdf(word_pairs):
     c = canvas.Canvas(tmp.name, pagesize=A4)
     width, height = A4
 
-    # ✅ 한글 폰트 등록
+    # ✅ 한글 폰트 등록 (iPad에서도 내장 지원)
     pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
     c.setFont("HYSMyeongJo-Medium", 14)
 
@@ -87,6 +90,8 @@ if uploaded_files:
         combined = pd.concat(dfs, ignore_index=True)
         combined = combined.iloc[:, :2]
         combined.columns = ["영어", "뜻"]
+
+        # 중복 및 결측 제거
         combined = combined.dropna().drop_duplicates(subset=["영어"])
         combined = combined.sample(frac=1, random_state=42).reset_index(drop=True)
 
@@ -96,6 +101,7 @@ if uploaded_files:
         test_df.loc[:half, "뜻"] = ""
         test_df.loc[half:, "영어"] = ""
 
+        # PDF 생성
         pdf_path = make_pdf(test_df.values.tolist())
 
         with open(pdf_path, "rb") as f:
