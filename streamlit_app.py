@@ -1,16 +1,19 @@
 import streamlit as st
 import pandas as pd
+import chardet
 import io
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.lib.units import cm
 import tempfile
 import random
 
 # -----------------------------
-# 페이지 기본 설정
+# 기본 설정
 # -----------------------------
-st.title("📘 영어 단어 시험지 생성기")
+st.title("📘 영어 단어 시험지 생성기 (한글 지원)")
 st.write("CSV 또는 XLSX 파일을 업로드하면 자동으로 시험지를 만들어줍니다.")
 st.write("➡️ 절반은 영어 비우기, 절반은 뜻 비우기 형태로 구성됩니다.")
 
@@ -21,44 +24,48 @@ uploaded_files = st.file_uploader(
 )
 
 # -----------------------------
-# 파일 읽기 함수 (자동 인코딩 감지 포함)
+# 파일 읽기 (자동 인코딩 감지)
 # -----------------------------
 def load_file(uploaded_file):
-    file_name = uploaded_file.name.lower()
-    if file_name.endswith(".csv"):
+    name = uploaded_file.name.lower()
+    if name.endswith(".csv"):
         raw = uploaded_file.read()
         detected = chardet.detect(raw)
         encoding = detected["encoding"] or "utf-8-sig"
         return pd.read_csv(io.BytesIO(raw), encoding=encoding)
-    elif file_name.endswith(".xlsx"):
+    elif name.endswith(".xlsx"):
         return pd.read_excel(uploaded_file)
     else:
         return None
 
 # -----------------------------
-# 시험지 PDF 생성 함수
+# PDF 생성 (한글 폰트 적용)
 # -----------------------------
 def make_pdf(word_pairs):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     c = canvas.Canvas(tmp.name, pagesize=A4)
     width, height = A4
 
-    x_margin, y_margin = 2*cm, 2*cm
+    # ✅ 한글 폰트 등록
+    pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
+    c.setFont("HYSMyeongJo-Medium", 14)
+
+    x_margin, y_margin = 2 * cm, 2 * cm
     y = height - y_margin
 
-    c.setFont("Helvetica-Bold", 16)
     c.drawString(x_margin, y, "영어 단어 시험지")
-    y -= 1.5*cm
+    y -= 1.5 * cm
 
-    c.setFont("Helvetica", 12)
+    c.setFont("HYSMyeongJo-Medium", 11)
+
     for i, (eng, kor) in enumerate(word_pairs, 1):
-        line = f"{i}. {eng:<20}  -  {kor}"
+        line = f"{i}. {eng or ''}   -   {kor or ''}"
         c.drawString(x_margin, y, line)
-        y -= 0.8*cm
-        if y < 2*cm:
+        y -= 0.8 * cm
+        if y < 2 * cm:
             c.showPage()
+            c.setFont("HYSMyeongJo-Medium", 11)
             y = height - y_margin
-            c.setFont("Helvetica", 12)
 
     c.save()
     return tmp.name
@@ -78,24 +85,17 @@ if uploaded_files:
 
     if dfs:
         combined = pd.concat(dfs, ignore_index=True)
-
-        # 첫 두 컬럼만 사용
         combined = combined.iloc[:, :2]
         combined.columns = ["영어", "뜻"]
-
-        # 결측치 제거 및 중복 제거
         combined = combined.dropna().drop_duplicates(subset=["영어"])
-
-        # 섞기
         combined = combined.sample(frac=1, random_state=42).reset_index(drop=True)
 
-        # 절반은 뜻 비우기, 절반은 영어 비우기
+        # 절반씩 비우기
         half = len(combined) // 2
         test_df = combined.copy()
         test_df.loc[:half, "뜻"] = ""
         test_df.loc[half:, "영어"] = ""
 
-        # PDF 생성
         pdf_path = make_pdf(test_df.values.tolist())
 
         with open(pdf_path, "rb") as f:
