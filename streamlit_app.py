@@ -1,134 +1,113 @@
-# streamlit_app.py
 import streamlit as st
 import pandas as pd
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-import random
+import chardet
 import io
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import cm
+import tempfile
+import random
 
-st.set_page_config(page_title="영어 단어 시험지 생성기", layout="centered")
+# -----------------------------
+# 페이지 기본 설정
+# -----------------------------
 st.title("📘 영어 단어 시험지 생성기")
+st.write("CSV 또는 XLSX 파일을 업로드하면 자동으로 시험지를 만들어줍니다.")
+st.write("➡️ 절반은 영어 비우기, 절반은 뜻 비우기 형태로 구성됩니다.")
 
 uploaded_files = st.file_uploader(
-    "엑셀 또는 CSV 파일 업로드 (여러 개 가능)", 
-    type=["xlsx", "csv"], 
+    "단어 스프레드시트 파일을 업로드하세요 (여러 개 선택 가능)",
+    type=["csv", "xlsx"],
     accept_multiple_files=True
 )
 
-num_words = st.number_input("출제할 단어 수 (짝수 권장)", min_value=2, value=10, step=1)
-
-# 옵션: 헤더 명 지정(선택)
-eng_header = st.text_input("영어 단어 컬럼 이름 예시 (비워두면 자동탐지)", value="")
-kor_header = st.text_input("한국어 뜻 컬럼 이름 예시 (비워두면 자동탐지)", value="")
-
-if st.button("시험지 PDF 만들기"):
-    all_words = []
-
-    # 1) 업로드 파일에서 단어 수집
-    for f in uploaded_files:
-        try:
-            if f.name.lower().endswith(".xlsx"):
-                df = pd.read_excel(f)
-            else:
-                df = pd.read_csv(f)
-        except Exception as e:
-            st.warning(f"{f.name} 읽는 중 오류: {e}")
-            continue
-
-        # 컬럼명 정리
-        cols = [c.strip() for c in df.columns]
-        df.columns = cols
-
-        # 영어/한글 컬럼 자동 인식 (사용자가 입력하면 우선)
-        def find_col(preferred, keywords):
-            if preferred and preferred in df.columns:
-                return preferred
-            for k in df.columns:
-                kl = k.lower()
-                if any(word in kl for word in keywords):
-                    return k
-            return None
-
-        eng_col = find_col(eng_header, ["eng", "word", "english", "단어"])
-        kor_col = find_col(kor_header, ["kor", "mean", "korean", "뜻", "의미"])
-
-        if not (eng_col and kor_col):
-            st.info(f"{f.name}: 영어/한국어 컬럼을 자동으로 찾지 못했습니다. 파일을 확인하세요.")
-            continue
-
-        for _, row in df.iterrows():
-            e = str(row.get(eng_col, "")).strip()
-            k = str(row.get(kor_col, "")).strip()
-            if e and k and e.lower() != "nan" and k.lower() != "nan":
-                all_words.append((e.strip(), k.strip()))
-
-    # 2) 중복 제거(영어 소문자 기준)
-    seen = set()
-    unique_words = []
-    for e, k in all_words:
-        key = e.lower()
-        if key not in seen:
-            seen.add(key)
-            unique_words.append((e, k))
-
-    if len(unique_words) == 0:
-        st.warning("단어가 감지되지 않았습니다. 파일과 컬럼을 확인해주세요.")
+# -----------------------------
+# 파일 읽기 함수 (자동 인코딩 감지 포함)
+# -----------------------------
+def load_file(uploaded_file):
+    file_name = uploaded_file.name.lower()
+    if file_name.endswith(".csv"):
+        raw = uploaded_file.read()
+        detected = chardet.detect(raw)
+        encoding = detected["encoding"] or "utf-8-sig"
+        return pd.read_csv(io.BytesIO(raw), encoding=encoding)
+    elif file_name.endswith(".xlsx"):
+        return pd.read_excel(uploaded_file)
     else:
-        # 3) 샘플링 및 섞기
-        random.shuffle(unique_words)
-        n = min(int(num_words), len(unique_words))
-        selected = unique_words[:n]
+        return None
 
-        # 4) 절반 나누기 (만약 홀수면 앞 절반이 더 적게/많게 될 수 있음)
-        half = n // 2
-        english_only = selected[:half]   # 뜻 빈칸
-        korean_only = selected[half:]    # 영어 빈칸
+# -----------------------------
+# 시험지 PDF 생성 함수
+# -----------------------------
+def make_pdf(word_pairs):
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    c = canvas.Canvas(tmp.name, pagesize=A4)
+    width, height = A4
 
-        # 5) 시험지 PDF 생성
-        buffer_test = io.BytesIO()
-        doc_test = SimpleDocTemplate(buffer_test, pagesize=A4)
-        styles = getSampleStyleSheet()
-        story_test = [Paragraph("📘 영어 단어 시험지", styles["Title"]), Spacer(1, 20)]
+    x_margin, y_margin = 2*cm, 2*cm
+    y = height - y_margin
 
-        idx = 1
-        for e, k in english_only:
-            story_test.append(Paragraph(f"{idx}. {e}  -  __________", styles["Normal"]))
-            story_test.append(Spacer(1, 8))
-            idx += 1
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(x_margin, y, "영어 단어 시험지")
+    y -= 1.5*cm
 
-        for e, k in korean_only:
-            story_test.append(Paragraph(f"{idx}. __________  -  {k}", styles["Normal"]))
-            story_test.append(Spacer(1, 8))
-            idx += 1
+    c.setFont("Helvetica", 12)
+    for i, (eng, kor) in enumerate(word_pairs, 1):
+        line = f"{i}. {eng:<20}  -  {kor}"
+        c.drawString(x_margin, y, line)
+        y -= 0.8*cm
+        if y < 2*cm:
+            c.showPage()
+            y = height - y_margin
+            c.setFont("Helvetica", 12)
 
-        doc_test.build(story_test)
+    c.save()
+    return tmp.name
 
-        # 6) 정답지 생성
-        buffer_ans = io.BytesIO()
-        doc_ans = SimpleDocTemplate(buffer_ans, pagesize=A4)
-        story_ans = [Paragraph("📖 영어 단어 정답지", styles["Title"]), Spacer(1, 20)]
+# -----------------------------
+# 메인 로직
+# -----------------------------
+if uploaded_files:
+    dfs = []
+    for uploaded_file in uploaded_files:
+        try:
+            df = load_file(uploaded_file)
+            if df is not None and len(df.columns) >= 2:
+                dfs.append(df)
+        except Exception as e:
+            st.error(f"{uploaded_file.name} 읽기 오류: {e}")
 
-        idx = 1
-        for e, k in selected:
-            story_ans.append(Paragraph(f"{idx}. {e} - {k}", styles["Normal"]))
-            story_ans.append(Spacer(1, 6))
-            idx += 1
+    if dfs:
+        combined = pd.concat(dfs, ignore_index=True)
 
-        doc_ans.build(story_ans)
+        # 첫 두 컬럼만 사용
+        combined = combined.iloc[:, :2]
+        combined.columns = ["영어", "뜻"]
 
-        # 7) 다운로드 버튼 (Streamlit)
-        st.download_button(
-            "📄 시험지 PDF 다운로드", 
-            data=buffer_test.getvalue(), 
-            file_name="word_test.pdf",
-            mime="application/pdf"
-        )
-        st.download_button(
-            "📝 정답지 PDF 다운로드", 
-            data=buffer_ans.getvalue(), 
-            file_name="word_answers.pdf",
-            mime="application/pdf"
-        )
+        # 결측치 제거 및 중복 제거
+        combined = combined.dropna().drop_duplicates(subset=["영어"])
 
-        st.success(f"총 {n}개 단어로 시험지를 생성했습니다. (중복 제거 후)")
+        # 섞기
+        combined = combined.sample(frac=1, random_state=42).reset_index(drop=True)
+
+        # 절반은 뜻 비우기, 절반은 영어 비우기
+        half = len(combined) // 2
+        test_df = combined.copy()
+        test_df.loc[:half, "뜻"] = ""
+        test_df.loc[half:, "영어"] = ""
+
+        # PDF 생성
+        pdf_path = make_pdf(test_df.values.tolist())
+
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                label="📄 시험지 PDF 다운로드",
+                data=f,
+                file_name="영어단어시험지.pdf",
+                mime="application/pdf"
+            )
+
+        st.success("✅ 시험지 생성 완료!")
+        st.dataframe(test_df.head(10))
+    else:
+        st.warning("유효한 데이터를 가진 파일이 없습니다.")
