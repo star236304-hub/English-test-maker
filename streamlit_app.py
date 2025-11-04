@@ -488,8 +488,6 @@ st.write("파일명을 헤더에 자동으로 넣고, 점수란을 포함합니�
 
 uploaded_files = st.file_uploader("파일 업로드 (.xlsx 또는 .csv, 여러 개 가능)", type=["xlsx", "csv"], accept_multiple_files=True)
 num_questions = st.number_input("출력할 전체 문항 수", min_value=2, max_value=500, value=60, step=2)
-
-    for f in uploaded_files:
         try:
             if str(f.name).lower().endswith(".xlsx"):
                 df = pd.read_excel(f)
