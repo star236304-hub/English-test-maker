@@ -84,20 +84,68 @@ def wrap_text_by_width(text, font_name, font_size_pt, max_width_pt):
 # -----------------------
 # 파일명에서 Day n 추출 유틸
 # -----------------------
+# -----------------------
+# ✅ 파일명에서 Day 정보 추출 유틸리티
+# -----------------------
+import re
+
 def extract_day_label(filename):
-    """예: 'Day 1.xlsx' -> 'Day 1' ; 'Day01-something.xlsx'도 어느정도 인식."""
+    """
+    파일명에서 'Day n' 패턴을 추출.
+    예: 'Day 1.xlsx' → 'Day 1'
+        'day_03_vocabulary.xlsx' → 'Day 3'
+        '영단어.xlsx' → '영단어' (Day 정보 없음)
+    """
     name = filename.rsplit("/", 1)[-1]
-    # remove extension
+    # 확장자 제거
     name_wo_ext = ".".join(name.split(".")[:-1]) if "." in name else name
-    # try regex for Day n
+
+    # 정규식으로 Day 숫자 찾기
     m = re.search(r"(Day\s*\d+|Day[-_]*\d+|day\s*\d+)", name_wo_ext, flags=re.IGNORECASE)
     if m:
         label = m.group(0)
-        # normalize spacing and capitalization
         label = label.replace("_", " ").replace("-", " ").strip()
         return label.title()
-    # fallback: return base name
+
+    # Day가 없는 경우 확장자 없는 파일명 반환
     return name_wo_ext
+
+
+def extract_day_number(filename):
+    """
+    파일명에서 Day 뒤의 숫자만 추출
+    예: 'Day 1.xlsx' → 1
+        'Day10 단어.xlsx' → 10
+        '단어모음.xlsx' → None
+    """
+    m = re.search(r"Day\s*(\d+)", filename, flags=re.IGNORECASE)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def get_day_range_label(uploaded_files):
+    """
+    여러 파일명에서 Day 숫자 범위를 찾아 'Day n - Day m' 형태로 반환
+    예:
+      ['Day 1.xlsx', 'Day 3.xlsx'] → 'Day 1 - Day 3'
+      ['Day 5.xlsx'] → 'Day 5'
+      ['영단어.xlsx'] → 첫 파일 이름 기반 표시
+    """
+    days = []
+    for f in uploaded_files:
+        n = extract_day_number(f.name)
+        if n is not None:
+            days.append(n)
+
+    if not days:
+        # Day가 없는 경우 기존 extract_day_label()로 대체
+        return extract_day_label(uploaded_files[0].name)
+
+    days = sorted(days)
+    if len(days) == 1:
+        return f"Day {days[0]}"
+    return f"Day {days[0]} - Day {days[-1]}"
 
 # -----------------------
 # PDF: 시험지 생성 (정밀 레이아웃)
