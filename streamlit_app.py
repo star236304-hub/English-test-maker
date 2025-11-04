@@ -457,7 +457,6 @@ if uploaded_files:
             df.columns = cols
             if "english" in df.columns and "korean" in df.columns:
                 df_sub = df[["english", "korean"]].copy()
-                df_sub.columns = ["english", "korean"]
             elif "단어" in df.columns and "뜻" in df.columns:
                 df_sub = df[["단어", "뜻"]].copy()
                 df_sub.columns = ["english", "korean"]
@@ -481,7 +480,23 @@ if uploaded_files:
             pick_n = min(int(num_questions), available)
             sampled = combined.sample(frac=1, random_state=42).reset_index(drop=True).iloc[:pick_n]
 
-            # Build pairs: first half kor blank (show english), second half eng blank (show korean)
+            # === Day 라벨 연결 로직 ===
+            day_labels = []
+            for f in uploaded_files:
+                label = extract_day_label(f.name)
+                if label and label not in day_labels:
+                    day_labels.append(label)
+            
+            def day_key(x):
+                import re
+                match = re.search(r'Day\s*(\d+)', x, re.IGNORECASE)
+                return int(match.group(1)) if match else 999
+            day_labels.sort(key=day_key)
+            
+            file_label = " - ".join(day_labels) if day_labels else "영어 단어 시험지"
+            # ===============================
+
+            # Build pairs
             half = pick_n // 2
             word_pairs = []
             for i in range(half):
@@ -493,14 +508,11 @@ if uploaded_files:
                 kor = str(sampled.iloc[i]["korean"])
                 word_pairs.append((eng, kor, False))
 
-            # file label from first file
-            file_label = extract_day_label(uploaded_files[0].name) if uploaded_files else None
-
             test_buf = create_test_pdf(word_pairs, pick_n, filename_label=file_label)
             answer_buf = create_answer_pdf(word_pairs, pick_n, filename_label=file_label)
 
-            st.download_button("📄 시험지 다운로드 (PDF)", data=test_buf, file_name="시험지.pdf", mime="application/pdf")
-            st.download_button("✅ 정답지 다운로드 (PDF)", data=answer_buf, file_name="정답지.pdf", mime="application/pdf")
+            st.download_button("시험지 다운로드 (PDF)", data=test_buf, file_name="시험지.pdf", mime="application/pdf")
+            st.download_button("정답지 다운로드 (PDF)", data=answer_buf, file_name="정답지.pdf", mime="application/pdf")
 
             st.success(f"총 {pick_n}문항으로 시험지 및 정답지 생성 완료 (원본 단어 수: {available}).")
 else:
