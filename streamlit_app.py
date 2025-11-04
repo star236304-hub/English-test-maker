@@ -85,18 +85,12 @@ def wrap_text_by_width(text, font_name, font_size_pt, max_width_pt):
 # 파일명에서 Day n 추출 유틸
 # -----------------------
 def extract_day_label(filename):
-    """예: 'Day 1.xlsx' -> 'Day 1' ; 'Day01-something.xlsx'도 어느정도 인식."""
     name = filename.rsplit("/", 1)[-1]
-    # remove extension
     name_wo_ext = ".".join(name.split(".")[:-1]) if "." in name else name
-    # try regex for Day n
-    m = re.search(r"(Day\s*\d+|Day[-_]*\d+|day\s*\d+)", name_wo_ext, flags=re.IGNORECASE)
+    m = re.search(r"(Day[-_ ]*(\d+))", name_wo_ext, flags=re.IGNORECASE)
     if m:
-        label = m.group(0)
-        # normalize spacing and capitalization
-        label = label.replace("_", " ").replace("-", " ").strip()
-        return label.title()
-    # fallback: return base name
+        num = m.group(2)
+        return f"Day {int(num)}"  # "Day 1", "Day 10" 형식 통일
     return name_wo_ext
 
 # -----------------------
