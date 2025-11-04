@@ -1,165 +1,165 @@
 import streamlit as st
 import pandas as pd
-import io
 import random
-import tempfile
+import io
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.lib.units import cm
-from reportlab.lib.colors import black, blue
+from reportlab.lib import colors
 
-# -----------------------------
-# Streamlit 기본 설정
-# -----------------------------
-st.title("📘 영어 단어 시험지 생성기 (2단 정렬 + 정답지 색 강조 + 밑줄 개선)")
-st.write("CSV 또는 XLSX 파일을 업로드하세요. Numbers 파일도 변환 후 사용 가능합니다.")
-
-uploaded_files = st.file_uploader(
-    "📂 단어 스프레드시트 파일 업로드 (여러 개 가능)",
-    type=["csv", "xlsx"],
-    accept_multiple_files=True
-)
-
-num_questions = st.number_input("출력할 문항 수", min_value=10, max_value=200, value=60, step=10)
-
-# -----------------------------
-# 파일 로드 함수
-# -----------------------------
-def load_file(uploaded_file):
-    name = uploaded_file.name.lower()
-    if name.endswith(".csv"):
-        raw = uploaded_file.read()
-        try:
-            df = pd.read_csv(io.BytesIO(raw), encoding="utf-8-sig")
-        except UnicodeDecodeError:
-            df = pd.read_csv(io.BytesIO(raw), encoding="cp949")
-        return df
-    elif name.endswith(".xlsx"):
-        return pd.read_excel(uploaded_file)
-    else:
-        return None
-
-# -----------------------------
+# --------------------------------------------------
 # PDF 생성 함수
-# -----------------------------
-def make_pdf(word_pairs, is_answer_sheet=False):
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-    c = canvas.Canvas(tmp.name, pagesize=A4)
+# --------------------------------------------------
+def generate_test_pdf(words, num_questions, filename="vocab_test.pdf"):
+    pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))  # 한글 폰트
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
 
-    # ✅ 한글 폰트 등록
-    pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
-    c.setFont("HYSMyeongJo-Medium", 12)
+    # 여백 및 기본 설정
+    margin_x = 2 * cm
+    margin_y = 2 * cm
+    column_gap = 1.5 * cm
+    column_width = (width - 2 * margin_x - column_gap) / 2
+    line_height = 0.8 * cm  # 줄 간격
+    font_size = 6  # 2mm 폰트
+    underline_length = 3.5 * cm
 
-    # 기본 여백 및 구조 설정
-    left_margin = 2 * cm
-    top_margin = 2 * cm
-    bottom_margin = 2 * cm
-    col_gap = 1.0 * cm
-    col_width = (width - (left_margin * 2) - col_gap) / 2
+    c.setFont("HYSMyeongJo-Medium", font_size)
 
-    # 1페이지당 문항수
-    per_col = 30
-    per_page = per_col * 2
-    line_height = 1.0 * cm
+    items_per_col = 30
+    total_items = min(num_questions, len(words))
 
-    total_pages = (len(word_pairs) - 1) // per_page + 1
-    page_num = 1
+    for i in range(total_items):
+        col = (i // items_per_col) % 2
+        row = i % items_per_col
+        x = margin_x + col * (column_width + column_gap)
+        y = height - margin_y - (row + 1) * line_height
 
-    for page in range(total_pages):
-        start_idx = page * per_page
-        end_idx = min(start_idx + per_page, len(word_pairs))
-        page_data = word_pairs[start_idx:end_idx]
+        eng, kor, is_eng_blank = words[i]
+        display_text = f"{i+1}. {kor}" if is_eng_blank else f"{i+1}. {eng}"
+        c.drawString(x, y, display_text)
 
-        for i, (eng, kor) in enumerate(page_data):
-            col = 0 if i < per_col else 1
-            row = i if i < per_col else i - per_col
-            x = left_margin + col * (col_width + col_gap)
-            y = height - top_margin - (row * line_height)
+        text_width = pdfmetrics.stringWidth(display_text, "HYSMyeongJo-Medium", font_size)
+        underline_start = x + text_width + 0.4 * cm
+        underline_end = underline_start + underline_length
 
-            num = start_idx + i + 1
-            text = eng if eng else kor
+        c.line(underline_start, y - 0.05 * cm, underline_end, y - 0.05 * cm)
 
-            if is_answer_sheet:
-                # 정답지: 색상 강조 (영어=검정, 한글=파랑)
-                c.setFillColor(black)
-                c.drawString(x, y, f"{num}. {eng}")
-                if kor:
-                    c.setFillColor(blue)
-                    # 긴 뜻 자동 줄바꿈
-                    max_width = col_width - 1.2 * cm
-                    lines = []
-                    cur_line = ""
-                    for word in kor.split():
-                        if pdfmetrics.stringWidth(cur_line + " " + word, "HYSMyeongJo-Medium", 12) < max_width:
-                            cur_line += " " + word
-                        else:
-                            lines.append(cur_line.strip())
-                            cur_line = word
-                    lines.append(cur_line.strip())
-                    y2 = y - 0.4 * cm
-                    for line in lines:
-                        c.drawString(x + 1.2 * cm, y2, line)
-                        y2 -= 0.45 * cm
-                    c.setFillColor(black)
-            else:
-                # 시험지: 단어 옆에 밑줄
-                c.drawString(x, y, f"{num}. {text}")
-                # 밑줄 시작점 = 단어 끝부분 + 여백
-                if not eng or not kor:
-                    word_width = pdfmetrics.stringWidth(f"{num}. {text}", "HYSMyeongJo-Medium", 12)
-                    underline_start = x + word_width + 0.2 * cm
-                    underline_end = underline_start + 3.5 * cm
-                    underline_y = y - 0.2 * cm
-                    c.line(underline_start, underline_y, underline_end, underline_y)
-
-        # 페이지 번호
-        c.setFont("HYSMyeongJo-Medium", 10)
-        c.drawCentredString(width / 2, bottom_margin / 2, f"Page {page_num} / {total_pages}")
-        if page < total_pages - 1:
+        if (i + 1) % 60 == 0 and i + 1 < total_items:
+            c.drawCentredString(width / 2, 1 * cm, f"- Page {c.getPageNumber()} -")
             c.showPage()
-            c.setFont("HYSMyeongJo-Medium", 12)
-        page_num += 1
+            c.setFont("HYSMyeongJo-Medium", font_size)
 
+    c.drawCentredString(width / 2, 1 * cm, f"- Page {c.getPageNumber()} -")
     c.save()
-    return tmp.name
+    buffer.seek(0)
+    return buffer
 
-# -----------------------------
-# 메인 로직
-# -----------------------------
+
+# --------------------------------------------------
+# 정답지 생성 함수
+# --------------------------------------------------
+def generate_answer_pdf(words, num_questions, filename="answer_sheet.pdf"):
+    pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    margin_x = 2 * cm
+    margin_y = 2 * cm
+    column_gap = 1.5 * cm
+    column_width = (width - 2 * margin_x - column_gap) / 2
+    line_height = 0.8 * cm
+    font_size = 6
+    underline_length = 3.5 * cm
+
+    c.setFont("HYSMyeongJo-Medium", font_size)
+    items_per_col = 30
+    total_items = min(num_questions, len(words))
+
+    for i in range(total_items):
+        col = (i // items_per_col) % 2
+        row = i % items_per_col
+        x = margin_x + col * (column_width + column_gap)
+        y = height - margin_y - (row + 1) * line_height
+
+        eng, kor, is_eng_blank = words[i]
+        display_text = f"{i+1}. {kor}" if is_eng_blank else f"{i+1}. {eng}"
+        c.drawString(x, y, display_text)
+
+        text_width = pdfmetrics.stringWidth(display_text, "HYSMyeongJo-Medium", font_size)
+        underline_start = x + text_width + 0.4 * cm
+
+        c.setFillColor(colors.red)
+        answer_text = eng if is_eng_blank else kor
+        c.drawString(underline_start + 0.2 * cm, y, answer_text)
+        c.setFillColor(colors.black)
+
+        if (i + 1) % 60 == 0 and i + 1 < total_items:
+            c.drawCentredString(width / 2, 1 * cm, f"- Page {c.getPageNumber()} -")
+            c.showPage()
+            c.setFont("HYSMyeongJo-Medium", font_size)
+
+    c.drawCentredString(width / 2, 1 * cm, f"- Page {c.getPageNumber()} -")
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+
+# --------------------------------------------------
+# Streamlit UI
+# --------------------------------------------------
+st.title("📘 영어 단어 시험지 생성기 (iPad 한글 완벽 지원)")
+st.write("엑셀 또는 Numbers에서 내보낸 파일을 업로드하면 자동으로 시험지와 정답지를 만들어드립니다.")
+
+uploaded_files = st.file_uploader("📂 파일 업로드 (여러 개 가능)", type=["xlsx", "csv"], accept_multiple_files=True)
+
+num_questions = st.number_input("출제할 문항 수 선택", min_value=10, max_value=200, value=60, step=10)
+
 if uploaded_files:
-    dfs = []
-    for f in uploaded_files:
-        df = load_file(f)
-        if df is not None and len(df.columns) >= 2:
-            dfs.append(df)
+    all_words = pd.DataFrame()
 
-    if dfs:
-        combined = pd.concat(dfs, ignore_index=True)
-        combined = combined.iloc[:, :2]
-        combined.columns = ["영어", "뜻"]
-        combined = combined.dropna().drop_duplicates(subset=["영어"])
-        combined = combined.sample(frac=1, random_state=42).reset_index(drop=True)
+    for uploaded_file in uploaded_files:
+        try:
+            df = pd.read_excel(uploaded_file)
+        except:
+            df = pd.read_csv(uploaded_file, encoding="utf-8")
 
-        # 문항 수 제한
-        combined = combined.head(num_questions)
+        df.columns = [col.strip().lower() for col in df.columns]
 
-        # 절반 비우기
-        half = len(combined) // 2
-        test_df = combined.copy()
-        test_df.loc[:half, "뜻"] = ""
-        test_df.loc[half:, "영어"] = ""
+        # 예상되는 컬럼명 처리
+        if "english" in df.columns and "korean" in df.columns:
+            subset = df[["english", "korean"]]
+        elif "단어" in df.columns and "뜻" in df.columns:
+            subset = df[["단어", "뜻"]]
+            subset.columns = ["english", "korean"]
+        else:
+            st.warning(f"{uploaded_file.name} 파일의 컬럼명을 확인해주세요.")
+            continue
 
-        # PDF 생성
-        pdf_path_test = make_pdf(test_df.values.tolist(), is_answer_sheet=False)
-        pdf_path_answer = make_pdf(combined.values.tolist(), is_answer_sheet=True)
+        all_words = pd.concat([all_words, subset], ignore_index=True)
 
-        # 다운로드 버튼
-        with open(pdf_path_test, "rb") as f1, open(pdf_path_answer, "rb") as f2:
-            st.download_button("📝 시험지 다운로드", data=f1, file_name="시험지.pdf", mime="application/pdf")
-            st.download_button("✅ 정답지 다운로드", data=f2, file_name="정답지.pdf", mime="application/pdf")
+    # 중복 제거
+    all_words.drop_duplicates(inplace=True)
 
-        st.success("✅ 시험지와 정답지가 모두 정상적으로 생성되었습니다!")
-        st.dataframe(test_df.head(10))
+    # 무작위 선택
+    selected = all_words.sample(min(num_questions, len(all_words)), random_state=42)
+    half = len(selected) // 2
+    word_pairs = []
+
+    for i, row in enumerate(selected.itertuples(index=False)):
+        is_eng_blank = i < half
+        word_pairs.append((row.english, row.korean, is_eng_blank))
+
+    # PDF 생성
+    test_pdf = generate_test_pdf(word_pairs, num_questions)
+    answer_pdf = generate_answer_pdf(word_pairs, num_questions)
+
+    st.download_button("📄 시험지 다운로드", data=test_pdf, file_name="vocab_test.pdf")
+    st.download_button("✅ 정답지 다운로드", data=answer_pdf, file_name="answer_sheet.pdf")
+
+else:
+    st.info("엑셀(.xlsx) 또는 CSV 파일을 업로드해주세요.")
