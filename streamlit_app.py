@@ -24,7 +24,7 @@ UNDER_X2_MM = 152  # 오른쪽 밑줄 시작 위치 (152mm)
 
 TOP_OFFSET_MM = 62   # 위에서 62mm 지점부터 문항 시작
 BOTTOM_RESERVED_MM = 24  # 아래 24mm 비우기(페이지 번호 영역)
-LINE_HEIGHT_MM = 8   # 밑줄간 상하 간격 0.8cm = 8mm
+LINE_HEIGHT_MM = 4  # 밑줄간 상하 간격 0.4cm = 4mm
 CHAR_SIZE_MM = 2     # 한 글자당 2mm
 
 # -----------------------
