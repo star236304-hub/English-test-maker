@@ -542,7 +542,7 @@ if uploaded_files:
                 word_pairs.append((eng, kor, False))
 
             # file label from first file
-            file_label = extract_day_label(uploaded_files[0].name) if uploaded_files else None
+            file_label = get_day_range_label(uploaded_files) if uploaded_files else None
 
             test_buf = create_test_pdf(word_pairs, pick_n, filename_label=file_label)
             answer_buf = create_answer_pdf(word_pairs, pick_n, filename_label=file_label)
