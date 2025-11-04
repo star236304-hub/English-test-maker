@@ -488,8 +488,30 @@ st.write("파일명을 헤더에 자동으로 넣고, 점수란을 포함합니�
 
 uploaded_files = st.file_uploader("파일 업로드 (.xlsx 또는 .csv, 여러 개 가능)", type=["xlsx", "csv"], accept_multiple_files=True)
 num_questions = st.number_input("출력할 전체 문항 수", min_value=2, max_value=500, value=60, step=2)
+import streamlit as st
 
+# 📂 파일 업로드 UI
+uploaded_files = st.file_uploader(
+    "엑셀 파일을 업로드하세요",
+    accept_multiple_files=True,
+    type=["xlsx"]
+)
+
+# 🏷️ Day 인식 및 라벨 설정
+file_label = ""
 if uploaded_files:
+    try:
+        file_label = get_day_range_label(uploaded_files)
+    except Exception as e:
+        st.warning(f"파일명 인식 중 오류가 발생했습니다: {e}")
+        if hasattr(uploaded_files[0], "name"):
+            file_label = uploaded_files[0].name.rsplit("/", 1)[-1].split(".")[0]
+        else:
+            file_label = str(uploaded_files[0])
+
+# ✅ PDF 생성 버튼
+if st.button("시험지 생성"):
+    generate_test_pdf(uploaded_files, file_label)if uploaded_files:
     dfs = []
     for f in uploaded_files:
         try:
