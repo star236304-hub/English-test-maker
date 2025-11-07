@@ -462,54 +462,54 @@ if uploaded_files:
             st.error(f"{f.name} 처리중 오류: {e}")
 
     if not dfs:
-        st.warning("유효한 데이터가 없습니다.")
-    else:
-        combined = pd.concat(dfs, ignore_index=True)
-        combined = combined.dropna(subset=["english", "korean"])
-        combined = combined.drop_duplicates(subset=["english"])
-        available = len(combined)
-        if available == 0:
-            st.warning("단어가 없습니다.")
-        else:
-                        pick_n = min(int(num_questions), available)
+        st.warning("유효한 데이터가 없습니다.")        else:
+            combined = pd.concat(dfs, ignore_index=True)
+            combined = combined.dropna(subset=["english", "korean"])
+            combined = combined.drop_duplicates(subset=["english"])
+            available = len(combined)
+            if available == 0:
+                st.warning("단어가 없습니다.")
+            else:
+                pick_n = min(int(num_questions), available)
 
-            # 진짜 랜덤으로 섞기 (random_state 제거)
-            shuffled = combined.sample(frac=1).reset_index(drop=True)
-            sampled = shuffled.iloc[:pick_n]
+                # 진짜 랜덤으로 섞기 (random_state 제거)
+                shuffled = combined.sample(frac=1).reset_index(drop=True)
+                sampled = shuffled.iloc[:pick_n]
 
-            # === Day 라벨 연결 로직 (기존 유지) ===
-            day_labels = []
-            for f in uploaded_files:
-                label = extract_day_label(f.name)
-                if label and label not in day_labels:
-                    day_labels.append(label)
-            
-            def day_key(x):
-                import re
-                match = re.search(r'Day\s*(\d+)', x, re.IGNORECASE)
-                return int(match.group(1)) if match else 999
-            day_labels.sort(key=day_key)
-            
-            file_label = " - ".join(day_labels) if day_labels else "영어 단어 시험지"
-            # ===============================
+                # === Day 라벨 연결 로직 (기존 유지) ===
+                day_labels = []
+                for f in uploaded_files:
+                    label = extract_day_label(f.name)
+                    if label and label not in day_labels:
+                        day_labels.append(label)
+                
+                def day_key(x):
+                    import re
+                    match = re.search(r'Day\s*(\d+)', x, re.IGNORECASE)
+                    return int(match.group(1)) if match else 999
+                day_labels.sort(key=day_key)
+                
+                file_label = " - ".join(day_labels) if day_labels else "영어 단어 시험지"
+                # ===============================
 
-            # Build pairs (기존 배치 로직 유지)
-            half = pick_n // 2
-            word_pairs = []
-            for i in range(half):
-                eng = str(sampled.iloc[i]["english"])
-                kor = str(sampled.iloc[i]["korean"])
-                word_pairs.append((eng, kor, True))   # 영어 보여주기
-            for i in range(half, pick_n):
-                eng = str(sampled.iloc[i]["english"])
-                kor = str(sampled.iloc[i]["korean"])
-                word_pairs.append((eng, kor, False))  # 한글 보여주기
-            test_buf = create_test_pdf(word_pairs, pick_n, filename_label=file_label)
-            answer_buf = create_answer_pdf(word_pairs, pick_n, filename_label=file_label)
+                # Build pairs (기존 배치 로직 유지)
+                half = pick_n // 2
+                word_pairs = []
+                for i in range(half):
+                    eng = str(sampled.iloc[i]["english"])
+                    kor = str(sampled.iloc[i]["korean"])
+                    word_pairs.append((eng, kor, True))   # 영어 보여주기
+                for i in range(half, pick_n):
+                    eng = str(sampled.iloc[i]["english"])
+                    kor = str(sampled.iloc[i]["korean"])
+                    word_pairs.append((eng, kor, False))  # 한글 보여주기
 
-            st.download_button("시험지 다운로드 (PDF)", data=test_buf, file_name="시험지.pdf", mime="application/pdf")
-            st.download_button("정답지 다운로드 (PDF)", data=answer_buf, file_name="정답지.pdf", mime="application/pdf")
+                test_buf = create_test_pdf(word_pairs, pick_n, filename_label=file_label)
+                answer_buf = create_answer_pdf(word_pairs, pick_n, filename_label=file_label)
 
-            st.success(f"총 {pick_n}문항으로 시험지 및 정답지 생성 완료 (원본 단어 수: {available}).")
+                st.download_button("시험지 다운로드 (PDF)", data=test_buf, file_name="시험지.pdf", mime="application/pdf")
+                st.download_button("정답지 다운로드 (PDF)", data=answer_buf, file_name="정답지.pdf", mime="application/pdf")
+
+                st.success(f"총 {pick_n}문항으로 시험지 및 정답지 생성 완료 (원본 단어 수: {available}).")
 else:
     st.info("엑셀(.xlsx) 또는 CSV 파일을 업로드해주세요.")
