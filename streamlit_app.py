@@ -471,10 +471,13 @@ if uploaded_files:
         if available == 0:
             st.warning("단어가 없습니다.")
         else:
-            pick_n = min(int(num_questions), available)
-            sampled = combined.sample(frac=1, random_state=42).reset_index(drop=True).iloc[:pick_n]
+                        pick_n = min(int(num_questions), available)
 
-            # === Day 라벨 연결 로직 ===
+            # 진짜 랜덤으로 섞기 (random_state 제거)
+            shuffled = combined.sample(frac=1).reset_index(drop=True)
+            sampled = shuffled.iloc[:pick_n]
+
+            # === Day 라벨 연결 로직 (기존 유지) ===
             day_labels = []
             for f in uploaded_files:
                 label = extract_day_label(f.name)
@@ -490,18 +493,17 @@ if uploaded_files:
             file_label = " - ".join(day_labels) if day_labels else "영어 단어 시험지"
             # ===============================
 
-            # Build pairs
+            # Build pairs (기존 배치 로직 유지)
             half = pick_n // 2
             word_pairs = []
             for i in range(half):
                 eng = str(sampled.iloc[i]["english"])
                 kor = str(sampled.iloc[i]["korean"])
-                word_pairs.append((eng, kor, True))
+                word_pairs.append((eng, kor, True))   # 영어 보여주기
             for i in range(half, pick_n):
                 eng = str(sampled.iloc[i]["english"])
                 kor = str(sampled.iloc[i]["korean"])
-                word_pairs.append((eng, kor, False))
-
+                word_pairs.append((eng, kor, False))  # 한글 보여주기
             test_buf = create_test_pdf(word_pairs, pick_n, filename_label=file_label)
             answer_buf = create_answer_pdf(word_pairs, pick_n, filename_label=file_label)
 
